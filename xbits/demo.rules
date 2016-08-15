@@ -1,0 +1,12 @@
+# Locky detection xbits for the case when infection starts with an exe over http and continues with external ip lookup and tor activity
+# For this demo some ET rules were upgraded with xbits and flowbits
+# https://www.hybrid-analysis.com/sample/5c74c4a8cea90197edab393bce65da72deb60095bcdd73a3181e019fcf6300da?environmentId=100
+# ET rules liciense: https://rules.emergingthreats.net/open/suricata-1.3/LICENSE
+
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"ET POLICY PE EXE or DLL Windows file download HTTP"; flow:established,to_client; flowbits:isnotset,ET.http.binary; file_data; content:"MZ"; within:2; byte_jump:4,58,relative,little; content:"PE|00 00|"; distance:-64; within:4; flowbits:set,ET.http.binary; reference:url,doc.emergingthreats.net/bin/view/Main/2000419; xbits:set,EXEOverHTTP,track ip_dst, expire 60; classtype:policy-violation; sid:2018959; rev:2;)
+
+alert tcp $HOME_NET any -> $EXTERNAL_NET $HTTP_PORTS (msg:"ET POLICY External IP Lookup - ipecho.net"; flow:established,to_server; content:"Host|3a 20|ipecho.net|0d 0a|"; http_header; fast_pattern:only; xbits:set,ExternalIpLookup,track ip_src, expire 60; classtype:policy-violation; sid:2022351; rev:1;)
+
+alert tcp any ![21,25,110,143,443,465,587,636,989:995,5061,5222,8443] -> any any (msg:"ET POLICY TLS possible TOR SSL traffic"; flow:established,from_server; content:"|06 03 55 04 03|"; pcre:"/^.{2}www\.[0-9a-z]{8,20}\.com[01]/Rs"; content:"|06 03 55 04 03|"; distance:0; pcre:"/^.{2}www\.[0-9a-z]{8,20}\.net/Rs"; xbits:set,TORSSLTraffic,track ip_dst, expire 60; flowbits:set,2018789; classtype:trojan-activity; sid:2018789; rev:2;)
+
+alert tcp any ![21,25,110,143,443,465,587,636,989:995,5061,5222,8443] -> any any (msg: "Likely Locky.M3 Activity"; flow:established,from_server; content:"|06 03 55 04 03|"; flowbits:isset,2018789; xbits:isset,EXEOverHTTP,track ip_dst; xbits:isset,TORSSLTraffic,track ip_dst; xbits:isset,ExternalIpLookup,track ip_dst; threshold: type limit, track by_dst, count 1, seconds 60; classtype: trojan-activity; sid: 12300000; rev: 1;)
